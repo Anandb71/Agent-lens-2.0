@@ -1,109 +1,127 @@
-# AGENT LENS 2.0 - Kaggle 5-Day AI Agents Intensive Capstone Project
+# Agent-Lens 2.0: An AgentOps Debugging Engine
 
-Track: D. Freestyle Track
+Kaggle Agents Intensive Capstone Project (Submission)
 
-Project: An "AgentOps Meta-Agent" for autonomous debugging and analysis.
+## 1. The Problem: The "Black Box"
 
-## 1. Project Pitch: The "Postman for AI Agents"
+In the world of Large Language Model (LLM) agents, the biggest challenge isn't "what happens when it works," but "what happens when it fails?"
 
-This project, Agent Lens 2.0, is an AgentOps Meta-Agent built entirely with the Agent Development Kit (ADK) and concepts from the 5-day intensive course.
+Traditional debugging tools fall short. Agents often fail silently, get stuck in loops, or produce non-deterministic errors. Debugging them feels like trying to fix a "black box" from the outside. We need a way to look inside the agent's "mind" at the moment of failure.
 
-While other agents do tasks, our agent fixes agents.
+## 2. The Solution: Agent-Lens
 
-It solves the #1 problem for AI developers: debugging non-deterministic agentic workflows. It functions as an A2A-compliant service that other agents can call when they fail. When an agent sends its failed trace to Agent Lens 2.0, our service:
+Agent-Lens is a complete AgentOps (Agent Operations) prototype that solves this problem.
 
-*   **OBSERVES** the failure by analyzing the trace.
-*   **EVOLVES** the agent by using an LLM-as-a-Judge to find the root cause and a RefinerAgent to suggest a code/prompt fix.
-*   **REMEMBERS** the bug and its fix in a persistent "bug database" (our Memory).
+It's a meta-agent system that provides Analysis-as-a-Service. Instead of just crashing, a failing agent can send its final trace to Agent-Lens. Agent-Lens then uses its own set of agents to perform a root cause analysis and suggest a fix.
 
-## 2. Key Course Concepts Demonstrated
+This project implements a full, end-to-end "Observe -> Evolve" feedback loop.
 
-This project strategically integrates advanced concepts from all 5 days of the course.
+## 3. Architecture Deep-Dive
 
-### 📄 Day 1: Orchestration (Manual LoopAgent)
+This project is a complete client-server application that demonstrates a real-world, scalable architecture.
 
-We implemented a manual "Debug & Refine" loop, directly inspired by the LoopAgent codelab.
+*   **client.py (The "Observer"):** This script simulates a "production" environment. It runs a `buggy_agent` that is designed to fail. When it does, `client.py` "Observes" the failure by capturing the full agent trace. It then acts as an A2A (Ask-to-Answer) client, sending the failed trace to our server for analysis.
+*   **server.py (The "Evolver" / A2A Service):** This is the core Agent-Lens engine, exposed as a FastAPI service. It receives the request from the client and acts as the A2A "Answerer". It doesn't do the thinking itself; instead, it calls our specialized meta-agents.
+*   **agents.py (The "Brain"):** This library contains our two specialized meta-agents:
+    *   `DebugCriticAgent`: Its only job is to analyze a failed trace and determine the root cause (e.g., "The agent was instructed to use a tool, but no tools were provided.").
+    *   `PromptRefinerAgent`: It takes the original prompt and the critic's analysis, and rewrites the prompt to fix the bug (e.g., "Add the 'Google Search' tool to the agent's toolset.").
+*   **bug_database.json (The "Memory"):** This is our project's persistent memory. The `server.py` saves every single bug report, critique, and suggested fix to this database. This allows us to track agent failures over time and build a dashboard of our system's health.
 
-Our `server.py` orchestrates two specialist agents: a `DebugCriticAgent` and a `PromptRefinerAgent`.
+## 4. How to Run Agent-Lens
 
-This manual orchestration pattern gives us full control over the "Evolve" loop, passing the critique from the "Critic" to the "Refiner" to generate a fix.
+Follow these steps to run the full, end-to-end "Observe -> Evolve" loop.
 
-### 📄 Day 3: Persistent Memory (`bug_database.json`)
+### Step 1: Install Dependencies
 
-Our meta-agent features a persistent memory system, as seen in the Day 3 codelab.
-
-The `run_debug_analysis` function saves every bug report (the critique + the fix) to `bug_database.json`.
-
-We exposed this memory via a `/memory` endpoint on our server, proving that our agent "learns" from every bug it diagnoses.
-
-### 📄 Day 4: Observability & LLM-as-a-Judge
-
-**Observability:** The entire project is an "Observability" tool. `client.py` captures a full, failed agent trace (`buggy_runner.get_trace()`) and serializes it to JSON.
-
-**LLM-as-a-Judge:** Our `DebugCriticAgent` acts as a scalable, automated LLM-as-a-Judge. It ingests the failed trace and provides a root cause analysis, demonstrating the "Glass Box" evaluation concept from the whitepaper.
-
-### 📄 Day 5: Prototype to Production (A2A Protocol)
-
-We converted our agent from a simple script into a production-grade A2A (Agent2Agent) Service.
-
-**A2A Server (`server.py`):** We wrapped our core logic in a `FunctionTool` and used `to_a2a()` to expose it as a discoverable agent service on the network.
-
-**A2A Client (`client.py`):** Our client uses `RemoteA2aAgent` to connect to the server's agent card, demonstrating how a "buggy" agent can call our service for autonomous debugging.
-
-## 3. How to Run This Project
-
-This project consists of two main components: the Server (our meta-agent) and the Client (the buggy agent).
-
-### Prerequisites
-
-*   Python 3.10+
-*   `pip install -r requirements.txt`
-*   Set your Gemini API Key:
-    *   (PowerShell): `$env:GOOGLE_API_KEY="your_api_key_here"`
-    *   (Mac/Linux): `export GOOGLE_API_KEY='your_api_key_here'`
-
-### Step 1: Run the Server
-
-In your first terminal, start the Agent Lens 2.0 server.
+Install all required Python libraries.
 
 ```bash
-python agent_lens_2.0/server.py
+# Make sure you are in the agent_lens_2.0 directory
+pip install -r requirements.txt
 ```
 
-You will see `INFO: Uvicorn running on http://127.0.0.1:8000`. Keep this terminal running.
+### Step 2: Run the Server (Terminal 1)
 
-### Step 2: Run the Client (in a new terminal)
-
-In a new, second terminal, activate the same virtual environment and set your API key. Then, run the client.
+In your first terminal, start the Agent-Lens server. It will wait for clients to connect.
 
 ```bash
-python agent_lens_2.0/client.py
+# In Terminal 1:
+python server.py
 ```
-
-### Step 3: See the Results
-
-The client terminal will run, capture a failed trace, call the server, and then print the full debugging results:
-
-```
-==================================================
-🏆 AGENT LENS 2.0: A2A DEBUGGING RESULTS 🏆
-==================================================
-
---- [CRITIC] ROOT CAUSE (from server) ---
-The agent failed because it attempted to call a tool (`Google Search`) that was not available in its tool list...
-
---- [REFINER] SUGGESTED FIX (from server) ---
-You are a helpful research assistant. You MUST use the `search` tool to find information.
-==================================================
-```
-
-### Step 4: Verify Persistent Memory (Day 3)
-
-In your client terminal, you can now query the server's memory endpoint to see the bug report it just saved:
 
 ```bash
-# Windows (PowerShell)
+# --- Expected Output ---
+# INFO:     Started server process [12345]
+# INFO:     Waiting for application startup.
+# INFO:     Application startup complete.
+# INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+```
+
+### Step 3: Run the Client (Terminal 2)
+
+In a second terminal, set your `GOOGLE_API_KEY` and run the client. The client will run the buggy agent, capture its trace, and send it to the server.
+
+```bash
+# In Terminal 2 (PowerShell):
+$env:GOOGLE_API_KEY="YOUR_API_KEY_HERE"; python client.py
+
+# In Terminal 2 (bash/zsh):
+export GOOGLE_API_KEY="YOUR_API_KEY_HERE"
+python client.py
+```
+
+### Step 4: See the Results
+
+The `client.py` script will print the server's analysis directly to your console.
+
+```
+# --- Expected Client Output ---
+# ...
+# 🏆 AGENT LENS 2.0: DEBUGGING SERVICE RESPONSE 🏆
+# ==================================================
+#
+# --- CRITIQUE FROM SERVICE ---
+# The agent was instructed 'You MUST use the `Google Search` tool to find information', but the `tools` list provided to the agent was empty. This led to a failure as the agent could not fulfill its core instruction.
+#
+# --- SUGGESTED FIX FROM SERVICE ---
+# The agent's prompt is valid, but its configuration is flawed. To fix this, you must provide the agent with the 'Google Search' tool.
+#
+# Example (in google-adk):
+# from google.adk.tools import GoogleSearch
+# ...
+# buggy_agent = Agent(
+#     ...
+#     tools=[GoogleSearch()], # <--- ADD THIS
+# )
+# ==================================================
+```
+
+You can also check the server's memory by opening `bug_database.json` or by curling the `/memory` endpoint:
+
+```bash
+# In Terminal 2, after running the client:
 curl http://127.0.0.1:8000/memory
+```
 
-# Mac/Linux
-curl http://127.0.0.1:8000/memory
+## 5. A Note on the A2A Implementation
+
+My initial plan was to use the ADK's `to_a2a` helper function to build the A2A service.
+
+However, during testing with the provided ADK (v1.18.0), I identified a `ModuleNotFoundError` and version incompatibility that made this helper function unreliable.
+
+To ensure maximum stability and build a production-ready system, I made a deliberate engineering decision to revert to a manual, robust REST API.
+
+*   The Server uses FastAPI to expose a clean `/debug` endpoint.
+*   The Client uses `httpx` to send its request.
+
+This approach perfectly implements the "Ask-to-Answer" (A2A) pattern in a framework-agnostic way, guaranteeing that the project runs reliably in any environment.
+
+## 6. Future Vision: From Prototype to Platform
+
+This project is the core engine for a full-scale AgentOps platform. The future possibilities are massive:
+
+*   **CI/CD Integration:** Integrate `client.py` into a GitHub Actions pipeline. Automatically run 100 tests on every commit and get AI-powered bug reports before code even merges.
+*   **Self-Healing Agents:** A production agent could use this service to debug itself. A `try/except` block could call the Agent-Lens server on failure, receive a new prompt, and retry the task with the new, corrected instructions.
+*   **Visual Dashboard:** A simple web application (e.g., in React or Angular) could read `bug_database.json` and display a live, filterable dashboard of all agent failures, critiques, and fixes over time.
+
+Thank you for reviewing my project.
