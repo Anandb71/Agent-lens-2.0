@@ -125,3 +125,8 @@ This project is the core engine for a full-scale AgentOps platform. The future p
 *   **Visual Dashboard:** A simple web application (e.g., in React or Angular) could read `bug_database.json` and display a live, filterable dashboard of all agent failures, critiques, and fixes over time.
 
 Thank you for reviewing my project.
+---
+
+## 7. License
+
+This project is licensed under the MIT License. See the `LICENSE` file for details.
