@@ -4,10 +4,12 @@ import logging
 import json
 import uuid
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException # NEW IMPORT
+from pydantic import BaseModel # NEW IMPORT
+
+# --- ADK Imports ---
 from google.genai import types
 from google.adk.agents import Agent, LlmAgent
-from pydantic import BaseModel # NEW IMPORT
 from google.adk.models.google_llm import Gemini
 from google.adk.runners import InMemoryRunner
 from google.adk.tools import FunctionTool
@@ -18,7 +20,6 @@ class DebugRequest(BaseModel):
     trace_json: str
 
 # --- 1. Import Agents from our Library ---
-# We are now importing from our 'agents.py' file
 try:
     from agents import debug_critic_agent, prompt_refiner_agent, retry_config
 except ImportError:
@@ -33,6 +34,14 @@ DATABASE_FILE = "./bug_database.json"
 APP_NAME = "AgentLensDebugger"
 USER_ID = "service-user"
 
+# --- Helper function for database initialization ---
+def initialize_database():
+    """Creates bug_database.json if it doesn't exist."""
+    if not os.path.exists(DATABASE_FILE):
+        with open(DATABASE_FILE, "w") as f:
+            json.dump([], f)
+        logger.info(f"--- 💾 Created empty database file: {DATABASE_FILE} ---")
+
 # --- 3. Define The Core "Evolve" Logic as a Tool ---
 
 async def run_debug_analysis(agent_prompt: str, trace_json: str) -> dict:
@@ -41,7 +50,7 @@ async def run_debug_analysis(agent_prompt: str, trace_json: str) -> dict:
     and saves the result to memory. This function is exposed as a tool
     to our main service agent.
     """
-    logger.info(f"--- 🚀 [Step 2: EVOLVE] Starting Manual Debug Loop... ---")
+    logger.info(f"--- 🚀 [Step 2: EVOLVE] Starting Debug Loop... ---")
 
     # --- 2a. Run the Critic ---
     logger.info("--- 📞 Calling DebugCriticAgent... ---")
@@ -93,15 +102,20 @@ async def run_debug_analysis(agent_prompt: str, trace_json: str) -> dict:
         # Even if saving fails, return the result to the user
         return {"error": "Debug analysis complete, but failed to save to memory."}
 
-    logger.info("--- 🏁 [Step 2: EVOLVE] Manual Debug Loop Complete. ---")
+    logger.info("--- 🏁 [Step 2: EVOLVE] Debug Loop Complete. ---")
     
     return {
         "critique": bug_critique,
         "suggested_fix": suggested_fix
     }
 
-# --- 4. Define the FastAPI App and Manual Endpoint (Bypassing broken A2A) ---
+# --- 4. Define the FastAPI App and Manual Endpoint (Working Version) ---
 app = FastAPI()
+
+@app.on_event("startup")
+def on_startup():
+    initialize_database()
+
 logger.info("✅ FastAPI App created.")
 
 # --- 5. Define the Agent Endpoint ---
@@ -117,7 +131,7 @@ async def debug_agent(request: DebugRequest):
         logger.error(f"--- ❌ Debug analysis failed: {e} ---")
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- 6. Add Bonus "Memory" Endpoint (Day 3) ---
+# --- 6. Add Bonus "Memory" Endpoint (from old server) ---
 @app.get("/memory")
 async def get_memory():
     """

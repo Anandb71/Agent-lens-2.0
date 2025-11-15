@@ -21,4 +21,4 @@ ENV PORT 8080
 
 # The command to run our app using Gunicorn (a production server)
 # This is the "magic" line that starts our server in production.
-CMD ["gunicorn", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:$PORT", "server:app"]
+CMD python -m gunicorn -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT server:app
