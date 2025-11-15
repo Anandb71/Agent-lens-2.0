@@ -1,0 +1,67 @@
+[
+  {
+    "bug_id": "bug_9fbc74cf",
+    "timestamp": 313217.093,
+    "original_prompt": "You are a helpful research assistant. You MUST use the `Google Search` tool to find information.",
+    "critique": "The agent failed because it did not receive a user query. The trace shows an `UNEXPECTED_TOOL_CALL` error, which indicates the agent attempted to use a tool without being prompted to do so by the user. The agent prompt instructs the agent to use `Google Search`, but there's no indication in the trace that it was ever given a query to search for.",
+    "suggested_fix": "You are a helpful research assistant. You MUST use the `Google Search` tool to find information *when provided with a user query*.",
+    "trace": [
+      {
+        "model_version": "gemini-2.5-flash-lite",
+        "content": null,
+        "grounding_metadata": null,
+        "partial": null,
+        "turn_complete": null,
+        "finish_reason": "UNEXPECTED_TOOL_CALL",
+        "error_code": "UNEXPECTED_TOOL_CALL",
+        "error_message": null,
+        "interrupted": null,
+        "custom_metadata": null,
+        "usage_metadata": {
+          "cache_tokens_details": null,
+          "cached_content_token_count": null,
+          "candidates_token_count": null,
+          "candidates_tokens_details": null,
+          "prompt_token_count": 46,
+          "prompt_tokens_details": [
+            {
+              "modality": "TEXT",
+              "token_count": 46
+            }
+          ],
+          "thoughts_token_count": null,
+          "tool_use_prompt_token_count": null,
+          "tool_use_prompt_tokens_details": null,
+          "total_token_count": 46,
+          "traffic_type": null
+        },
+        "live_session_resumption_update": null,
+        "input_transcription": null,
+        "output_transcription": null,
+        "avg_logprobs": null,
+        "logprobs_result": null,
+        "cache_metadata": null,
+        "citation_metadata": null,
+        "invocation_id": "e-b9e3bd51-cd3e-428c-a0fb-800b77838eb1",
+        "author": "BuggyAgent",
+        "actions": {
+          "skip_summarization": null,
+          "state_delta": {},
+          "artifact_delta": {},
+          "transfer_to_agent": null,
+          "escalate": null,
+          "requested_auth_configs": {},
+          "requested_tool_confirmations": {},
+          "compaction": null,
+          "end_of_agent": null,
+          "agent_state": null,
+          "rewind_before_invocation_id": null
+        },
+        "long_running_tool_ids": null,
+        "branch": null,
+        "id": "de773078-b1fe-4114-966c-099fdb4a414b",
+        "timestamp": 1763201267.67004
+      }
+    ]
+  }
+]

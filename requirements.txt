@@ -2,3 +2,4 @@ google-adk
 google-generativeai
 uvicorn
 fastapi
+mcp
