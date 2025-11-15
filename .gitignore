@@ -1,0 +1,12 @@
+Python
+
+pycache/
+*.py[cod]
+*$py.class
+
+Virtual Environment
+
+venv/
+.venv/
+ENV/
+env/
