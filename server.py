@@ -4,8 +4,9 @@ import logging
 import json
 import uuid
 import uvicorn
-from fastapi import FastAPI, HTTPException # NEW IMPORT
-from pydantic import BaseModel # NEW IMPORT
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from contextlib import asynccontextmanager # NEW IMPORT
 
 # --- ADK Imports ---
 from google.genai import types
@@ -13,11 +14,6 @@ from google.adk.agents import Agent, LlmAgent
 from google.adk.models.google_llm import Gemini
 from google.adk.runners import InMemoryRunner
 from google.adk.tools import FunctionTool
-
-# Define the request body structure
-class DebugRequest(BaseModel):
-    agent_prompt: str
-    trace_json: str
 
 # --- 1. Import Agents from our Library ---
 try:
@@ -30,9 +26,22 @@ except ImportError:
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("AGENT_LENS_2.0_SERVER")
 
-DATABASE_FILE = "/tmp/bug_database.json"
+# --- FIX: Dynamic Database Path for Local vs. Cloud ---
+# Cloud Run provides a PORT env var; local runs do not.
+if os.environ.get('PORT'):
+    # Running in Cloud Run (read-only filesystem)
+    DATABASE_FILE = "/tmp/bug_database.json"
+else:
+    # Running locally
+    DATABASE_FILE = "./bug_database.json"
+
 APP_NAME = "AgentLensDebugger"
 USER_ID = "service-user"
+
+# Define the request body structure
+class DebugRequest(BaseModel):
+    agent_prompt: str
+    trace_json: str
 
 # --- Helper function for database initialization ---
 def initialize_database():
@@ -47,8 +56,7 @@ def initialize_database():
 async def run_debug_analysis(agent_prompt: str, trace_json: str) -> dict:
     """
     This is the core logic of our meta-agent. It runs the debug loop
-    and saves the result to memory. This function is exposed as a tool
-    to our main service agent.
+    and saves the result to memory.
     """
     logger.info(f"--- 🚀 [Step 2: EVOLVE] Starting Debug Loop... ---")
 
@@ -110,12 +118,16 @@ async def run_debug_analysis(agent_prompt: str, trace_json: str) -> dict:
     }
 
 # --- 4. Define the FastAPI App and Manual Endpoint (Working Version) ---
-app = FastAPI()
 
-@app.on_event("startup")
-def on_startup():
+# FIX: Use modern lifespan event handler
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
     initialize_database()
+    yield
+    # Shutdown (nothing needed here)
 
+app = FastAPI(lifespan=lifespan)
 logger.info("✅ FastAPI App created.")
 
 # --- 5. Define the Agent Endpoint ---
