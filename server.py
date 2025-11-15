@@ -30,7 +30,7 @@ except ImportError:
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("AGENT_LENS_2.0_SERVER")
 
-DATABASE_FILE = "./bug_database.json"
+DATABASE_FILE = "/tmp/bug_database.json"
 APP_NAME = "AgentLensDebugger"
 USER_ID = "service-user"
 
