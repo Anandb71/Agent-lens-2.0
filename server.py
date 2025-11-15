@@ -6,62 +6,79 @@ import uuid
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from contextlib import asynccontextmanager # NEW IMPORT
-
-# --- ADK Imports ---
-from google.genai import types
-from google.adk.agents import Agent, LlmAgent
-from google.adk.models.google_llm import Gemini
 from google.adk.runners import InMemoryRunner
-from google.adk.tools import FunctionTool
+from contextlib import asynccontextmanager  # <-- Modern FastAPI context
 
-# --- 1. Import Agents from our Library ---
+# --- 1. Import Agent Creation Functions from our Library ---
+# We now import *functions* to create agents, not the agents themselves.
 try:
-    from agents import debug_critic_agent, prompt_refiner_agent, retry_config
+    from agents import create_debug_critic_agent, create_prompt_refiner_agent
 except ImportError:
-    print("ERROR: Could not import from 'agents'. Make sure you have renamed 'agent.py' to 'agents.py'")
+    print("ERROR: Could not import agent creation functions from 'agents'.")
     exit()
 
 # --- 2. Set up Logging and Constants ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("AGENT_LENS_2.0_SERVER")
 
-# --- FIX: Dynamic Database Path for Local vs. Cloud ---
-# Cloud Run provides a PORT env var; local runs do not.
+# --- DATABASE PATH FIX ---
+# Check if we are in the Google Cloud Run environment (which sets a PORT)
+# If we are, use the /tmp directory (writeable). Otherwise, use the local directory.
 if os.environ.get('PORT'):
-    # Running in Cloud Run (read-only filesystem)
+    logger.info("Running in Cloud Run (Deployment) mode. Using /tmp for database.")
     DATABASE_FILE = "/tmp/bug_database.json"
 else:
-    # Running locally
+    logger.info("Running in Local (Development) mode. Using current directory for database.")
     DATABASE_FILE = "./bug_database.json"
+# --- END FIX ---
 
 APP_NAME = "AgentLensDebugger"
 USER_ID = "service-user"
 
-# Define the request body structure
-class DebugRequest(BaseModel):
-    agent_prompt: str
-    trace_json: str
+# --- 3. LAZY LOADING / SINGLETON CONTAINER ---
+# This holds the initialized agents. It will only be populated when get_agent() is called.
+AGENTS = {} 
 
-# --- Helper function for database initialization ---
+def get_agent(agent_name: str):
+    """Initializes and returns an agent instance (Lazy Loading/Singleton Pattern)."""
+    if agent_name not in AGENTS:
+        logger.info(f"Initializing {agent_name} for the first time...")
+        if agent_name == "DebugCriticAgent":
+            AGENTS[agent_name] = create_debug_critic_agent()
+        elif agent_name == "PromptRefinerAgent":
+            AGENTS[agent_name] = create_prompt_refiner_agent()
+        else:
+            raise ValueError(f"Unknown agent name: {agent_name}")
+    return AGENTS[agent_name]
+
+
 def initialize_database():
-    """Creates bug_database.json if it doesn't exist."""
+    """Creates the database file if it doesn't exist."""
     if not os.path.exists(DATABASE_FILE):
-        with open(DATABASE_FILE, "w") as f:
-            json.dump([], f)
-        logger.info(f"--- 💾 Created empty database file: {DATABASE_FILE} ---")
+        logger.warning(f"Database file not found at {DATABASE_FILE}. Creating a new empty file.")
+        try:
+            # We must use a context manager to ensure file is closed, even on crash
+            with open(DATABASE_FILE, "w") as f:
+                json.dump([], f) # Write an empty list
+            logger.info("Successfully created empty database file.")
+        except IOError as e:
+            logger.error(f"FATAL: Could not create database file: {e}")
+            # The server will likely crash if the file system is read-only here
 
-# --- 3. Define The Core "Evolve" Logic as a Tool ---
+# --- 4. The Core "Evolve" Logic as a Tool ---
 
 async def run_debug_analysis(agent_prompt: str, trace_json: str) -> dict:
     """
     This is the core logic of our meta-agent. It runs the debug loop
     and saves the result to memory.
     """
-    logger.info(f"--- 🚀 [Step 2: EVOLVE] Starting Debug Loop... ---")
+    # Retrieve agents from cache (they were created during lifespan startup)
+    debug_critic_agent = get_agent("DebugCriticAgent")
+    logger.info(f"--- 🚀 [Step 2: EVOLVE] Starting Manual Debug Loop... ---")
 
-    # --- 2a. Run the Critic ---
+    # --- 2a. Run the Critic (Lazy Loaded) ---
     logger.info("--- 📞 Calling DebugCriticAgent... ---")
+    
     critic_prompt = f"""{debug_critic_agent.instruction}
     Here is the agent prompt and trace:
     - **Agent Prompt:** {agent_prompt}
@@ -73,8 +90,10 @@ async def run_debug_analysis(agent_prompt: str, trace_json: str) -> dict:
     bug_critique = critic_events[-1].content.parts[0].text
     logger.info(f"--- ✅ [CRITIC] Responded: {bug_critique[:50]}... ---")
 
-    # --- 2b. Run the Refiner ---
+    # --- 2b. Run the Refiner (Lazy Loaded) ---
+    prompt_refiner_agent = get_agent("PromptRefinerAgent")
     logger.info("--- 📞 Calling PromptRefinerAgent... ---")
+    
     refiner_prompt = f"""{prompt_refiner_agent.instruction}
     Here is the prompt and critique:
     - **Original Prompt:** {agent_prompt}
@@ -87,7 +106,7 @@ async def run_debug_analysis(agent_prompt: str, trace_json: str) -> dict:
     logger.info(f"--- ✅ [REFINER] Responded: {suggested_fix[:50]}... ---")
 
     # --- 2c. Implement Memory (Day 3 Concept) ---
-    logger.info("--- 💾 Saving to Memory (bug_database.json)... ---")
+    logger.info(f"--- 💾 Saving to Memory ({DATABASE_FILE})... ---")
     new_bug_report = {
         "bug_id": f"bug_{uuid.uuid4().hex[:8]}",
         "timestamp": asyncio.get_event_loop().time(),
@@ -98,7 +117,9 @@ async def run_debug_analysis(agent_prompt: str, trace_json: str) -> dict:
     }
     
     try:
-        # Use read/write with file locking for safety
+        # Re-initialize just in case file was deleted (safety check for cloud/local)
+        initialize_database()
+        
         with open(DATABASE_FILE, "r+") as f:
             data = json.load(f)
             data.append(new_bug_report)
@@ -107,30 +128,34 @@ async def run_debug_analysis(agent_prompt: str, trace_json: str) -> dict:
         logger.info(f"--- ✅ Bug {new_bug_report['bug_id']} saved to memory. ---")
     except (IOError, json.JSONDecodeError) as e:
         logger.error(f"--- ❌ FAILED to save to memory: {e} ---")
-        # Even if saving fails, return the result to the user
         return {"error": "Debug analysis complete, but failed to save to memory."}
 
-    logger.info("--- 🏁 [Step 2: EVOLVE] Debug Loop Complete. ---")
+    logger.info("--- 🏁 [Step 2: EVOLVE] Manual Debug Loop Complete. ---")
     
     return {
         "critique": bug_critique,
         "suggested_fix": suggested_fix
     }
 
-# --- 4. Define the FastAPI App and Manual Endpoint (Working Version) ---
+# --- 5. Define the FastAPI App and Lifespan (Modern Startup) ---
 
-# FIX: Use modern lifespan event handler
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    # This runs ONCE on startup. It is fast because it only checks the DB file,
+    # and does NOT initialize the LLM agents.
     initialize_database()
     yield
-    # Shutdown (nothing needed here)
+    # Cleanup on shutdown (not typically needed for Cloud Run, but good practice)
 
 app = FastAPI(lifespan=lifespan)
-logger.info("✅ FastAPI App created.")
+logger.info("✅ FastAPI App created with lifespan manager.")
 
-# --- 5. Define the Agent Endpoint ---
+# Define the request body structure
+class DebugRequest(BaseModel):
+    agent_prompt: str
+    trace_json: str
+
+# --- 6. Define the Agent Endpoint ---
 @app.post("/debug")
 async def debug_agent(request: DebugRequest):
     """
@@ -143,7 +168,7 @@ async def debug_agent(request: DebugRequest):
         logger.error(f"--- ❌ Debug analysis failed: {e} ---")
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- 6. Add Bonus "Memory" Endpoint (from old server) ---
+# --- 7. Add Bonus "Memory" Endpoint (Day 3) ---
 @app.get("/memory")
 async def get_memory():
     """
@@ -159,8 +184,8 @@ async def get_memory():
         logger.error(f"--- ❌ FAILED to read from memory: {e} ---")
         raise HTTPException(status_code=500, detail="Could not read bug database.")
 
-# --- 7. Make the Server Runnable ---
+# --- 8. (Local Development Only) ---
 if __name__ == "__main__":
-    logger.info("🚀 Starting AGENT LENS 2.0 Server...")
-    # We must run the server this way so it can handle async agent calls
+    logger.info("🚀 Starting AGENT LENS 2.0 Server (Dev Mode)...")
+    # This block is for testing locally. The Dockerfile (for deployment) uses Gunicorn.
     uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)

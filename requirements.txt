@@ -1,5 +1,12 @@
-google-adk
-google-generativeai
+# --- THIS IS THE FIX ---
+# We put the simple, critical server packages FIRST,
+# so they are installed before the complex google-adk.
+gunicorn
 uvicorn
 fastapi
+httpx
 mcp
+google-generativeai
+
+# The complex package is last
+google-adk
