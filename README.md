@@ -52,7 +52,7 @@ pip install -r requirements.txt
 This command deploys the fully fixed code, injecting the necessary environment variables and memory allocation:
 
 ```bash
-gcloud run deploy agent-lens-service --source . --region us-central1 --set-env-vars=GOOGLE_API_KEY=AIzaSyC2Xkwjno-DmMonrwtCnq8OJK1IrBzzJx4 --memory=2Gi
+gcloud run deploy agent-lens-service --source . --region us-central1 --set-env-vars=GOOGLE_API_KEY=YOUR_API_KEY_HERE --memory=2Gi
 ```
 
 ### Step 3: Run the Final Client Test (The Victory Lap)
